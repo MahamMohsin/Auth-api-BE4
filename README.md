@@ -2,7 +2,7 @@
 
 A CRUD API for managing a to-do list, built with **Node.js + Express** using a layered architecture (routes → controllers → services → repositories), now backed by a real **SQLite** database.
 
-Built for FlyRank Internship - Week 2/3, Assignments BE-01 and BE-02 (Backend AI Engineering track).
+Built for FlyRank Internship - Week 3 and BE-02 (Backend AI Engineering track).
 
 ## What this is
 
