@@ -1,17 +1,26 @@
-# Task API
+# Task API - db connection
 
-A simple in-memory CRUD API for managing a to-do list, built with **Node.js + Express** using a layered architecture (routes → controllers → services → repositories).
+A CRUD API for managing a to-do list, built with **Node.js + Express** using a layered architecture (routes → controllers → services → repositories), now backed by a real **SQLite** database.
 
-Built for FlyRank Internship - Week 2, Assignment BE-01 (Backend AI Engineering track).
+Built for FlyRank Internship - Week 2/3, Assignments BE-01 and BE-02 (Backend AI Engineering track).
 
 ## What this is
 
-A REST API that lets you create, read, update, and delete tasks. Data is stored in memory (a plain JavaScript array) — it resets whenever the server restarts. No database is used yet (that comes in a later stage of the program).
+A REST API that lets you create, read, update, and delete tasks. Data is stored in `tasks.db`, a SQLite database file, so it survives server restarts.
+
+## Why SQLite
+
+SQLite was chosen because it needs no separate database server — it's a single file (`tasks.db`) that the app creates automatically on first run. That makes it ideal for a small project like this: zero setup, zero config, and the whole database can be inspected with a lightweight viewer like DB Browser for SQLite.
+
+## Where the database file is stored
+
+`tasks.db` lives at the project root (same folder as `index.js`). It's created automatically the first time the server starts, and it's git-ignored since it's generated data, not source code.
 
 ## Tech stack
 
 - Node.js
 - Express 5
+- better-sqlite3 (SQLite driver)
 - swagger-ui-express (for interactive API docs)
 
 ## How to run
@@ -30,10 +39,12 @@ Interactive API docs (Swagger UI) are available at `http://localhost:3000/docs`.
 crud-api/
 ├── index.js                          # starts the server
 ├── app.js                            # express app setup, middleware, route mounting
+├── db.js                             # SQLite connection, table creation, one-time seed
+├── tasks.db                          # SQLite database file (auto-created, git-ignored)
 ├── routes/tasks.routes.js            # path/method → controller mapping
 ├── controllers/tasks.controller.js   # handles req/res and HTTP status codes
 ├── services/tasks.service.js         # business logic and validation
-├── repositories/tasks.repository.js  # in-memory data storage
+├── repositories/tasks.repository.js  # SQL queries against tasks.db
 └── openapi.json                      # OpenAPI spec consumed by Swagger UI
 ```
 
@@ -81,9 +92,19 @@ Open `http://localhost:3000/docs` to test the full CRUD cycle interactively.
 
 *(Screenshot of the Swagger UI CRUD cycle goes here.)*
 
-## The mortality experiment
+## Persistence
 
-Tasks are stored in a plain JavaScript array in `repositories/tasks.repository.js`. If the server is restarted, all created/updated/deleted changes are lost and the API resets to the original 3 seed tasks. This happens because the data only lives in the Node process's memory — nothing is written to disk. This is the reason a real database is introduced in a later stage of the program.
+Tasks are stored in SQLite (`tasks.db`) instead of a plain JavaScript array. On startup, `db.js` creates the `tasks` table if it doesn't exist yet, and inserts 3 example tasks only if the table is empty. Because the data lives on disk instead of in the Node process's memory, restarting the server no longer resets anything — created, updated, and deleted tasks stay exactly as they were.
+
+## Exploring the database manually
+
+Open `tasks.db` with [DB Browser for SQLite](https://sqlitebrowser.org/) and run queries directly against it — changes show up immediately through the API. Example:
+
+```sql
+SELECT * FROM tasks WHERE done = 1;
+```
+
+*(Screenshot of DB Browser for SQLite goes here.)*
 
 ## Architecture
 
