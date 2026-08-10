@@ -1,44 +1,38 @@
-const db = require('../db');
+const pool = require('../db');
 
-// SQLite has no real boolean type -- it stores 0/1.
-// Converting here keeps the API contract identical (done: true/false)
-// so the service/controller layers above never notice the storage change.
-const toApiTask = (row) => row && ({ ...row, done: !!row.done });
-
-// shows all tasks
-exports.findAll = () => {
-  const rows = db.prepare('SELECT * FROM tasks ORDER BY id').all();
-  return rows.map(toApiTask);
+exports.findAll = async () => {
+  const result = await pool.query('SELECT * FROM tasks ORDER BY id');
+  return result.rows;
 };
 
-// finding task by id
-exports.findById = (id) => {
-  const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-  return toApiTask(row);
+exports.findById = async (id) => {
+  const result = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+  return result.rows[0];
 };
 
-exports.add = (data) => {
-  const { title, done = false } = data;
-  const result = db
-    .prepare('INSERT INTO tasks (title, done) VALUES (?, ?)')
-    .run(title, done ? 1 : 0);
-
-  return exports.findById(result.lastInsertRowid);
+exports.add = async (data) => {
+  const result = await pool.query(
+    'INSERT INTO tasks (title, done) VALUES ($1, $2) RETURNING *',
+    [data.title, data.done]
+  );
+  return result.rows[0];
 };
 
-exports.update = (id, data) => {
-  const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-  if (!existing) return undefined;
+exports.update = async (id, data) => {
+  const existing = await exports.findById(id);
+  if (!existing) return null;
 
-  const title = data.title !== undefined ? data.title : existing.title;
-  const done = data.done !== undefined ? (data.done ? 1 : 0) : existing.done;
+  const newTitle = data.title !== undefined ? data.title : existing.title;
+  const newDone = data.done !== undefined ? data.done : existing.done;
 
-  db.prepare('UPDATE tasks SET title = ?, done = ? WHERE id = ?').run(title, done, id);
-
-  return exports.findById(id);
+  const result = await pool.query(
+    'UPDATE tasks SET title = $1, done = $2 WHERE id = $3 RETURNING *',
+    [newTitle, newDone, id]
+  );
+  return result.rows[0];
 };
 
-exports.remove = (id) => {
-  const result = db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
-  return result.changes > 0;
+exports.remove = async (id) => {
+  const result = await pool.query('DELETE FROM tasks WHERE id = $1', [id]);
+  return result.rowCount > 0;
 };
