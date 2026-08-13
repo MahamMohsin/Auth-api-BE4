@@ -1,147 +1,136 @@
-# Task API - containerization
+# Auth API
 
-A CRUD API for managing a to-do list, built with **Node.js + Express**, using a layered architecture (routes → controllers → services → repositories), backed by **PostgreSQL running in Docker**.
+A secure API with Sign Up, Log In, Log Out, and protected routes, built with **Node.js + Express** and **Supabase Auth** as the identity provider.
 
-Built for FlyRank Internship — Backend Track, Week 3, Assignment A3/BE-04 (Containerize your stack).
+Built for FlyRank Internship — Backend Track, Week 2, Assignment A4/BE-03 (Auth · Login & protect).
 
 ## What this is
 
-A REST API for creating, reading, updating, and deleting tasks. This is the third storage swap in the same project:
-
-| Stage | Where tasks live |
-|---|---|
-| A1 | an array in memory |
-| A2 | a `tasks.db` SQLite file |
-| A3 (this) | rows in a containerized Postgres database |
-
-The API's routes, request/response shapes, and status codes have not changed across any of these three swaps — only the `repositories/tasks.repository.js` module (and `db.js`) changed. This proves storage is an implementation detail, not part of the API contract.
-
-**One necessary change:** the `pg` driver is asynchronous (Promise-based), unlike `better-sqlite3` which was synchronous. So the service and controller functions are now `async`/`await` — but their logic, paths, and status codes are identical to A1/A2.
+An API that never handles passwords or cryptography itself — Supabase stores accounts, hashes passwords, and issues signed JWTs. This server's job is to: forward signup/login credentials to Supabase, verify the JWTs Supabase hands back, and guard specific routes so they only answer for a logged-in user.
 
 ## Tech stack
 
 - Node.js + Express 5
-- PostgreSQL 16 (official Docker image)
-- `pg` (node-postgres) — database driver, parameterized queries
+- `@supabase/supabase-js` — Supabase Auth SDK
 - `dotenv` — loads `.env` into `process.env`
-- Docker + Docker Compose
-- `swagger-ui-express` — interactive API docs
+- `swagger-ui-express` — interactive API docs with Bearer auth support
 
-## How to run (one command)
+## Setup
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In **Project Settings → API**, copy your **Project URL** and **anon public key** (never the `service_role` key).
+3. In **Authentication → Sign In / Providers → Email**, turn **"Confirm email" OFF** (so a fresh signup can log in immediately, for local testing).
+4. Copy `.env.example` to `.env` and fill in your values:
 
 ```bash
 cp .env.example .env
-docker compose up
 ```
 
-This brings up both the API (`http://localhost:3000`) and a Postgres database, creates the `tasks` table if missing, and seeds 3 example tasks on first run.
-
-Swagger docs: `http://localhost:3000/docs`
-
-### Environment variables
-
-Set in `.env` (git-ignored — see `.env.example` for the required keys):
-
 ```
-DATABASE_URL=postgres://postgres:dev@localhost:5432/tasks
+SUPABASE_URL=your_project_url
+SUPABASE_KEY=your_anon_key
+PORT=3000
 ```
 
-Inside Docker Compose, the app reaches Postgres via the service name `db`, not `localhost` — already configured in `compose.yaml`.
-
-### Running without Docker (local development)
+## How to run
 
 ```bash
 npm install
-# make sure a Postgres server is running locally and DATABASE_URL in .env points to it
 npm start
 ```
+
+Server runs at `http://localhost:3000`.
+Swagger docs (with Bearer auth "Authorize" button): `http://localhost:3000/docs`
 
 ## Project structure
 
 ```
-crud-api/
-├── index.js                          # loads .env, starts the server
-├── app.js                            # express app setup, middleware, route mounting
-├── db.js                             # Postgres connection pool, table creation, seed data
-├── routes/tasks.routes.js            # path/method → controller mapping (unchanged since A1)
-├── controllers/tasks.controller.js   # handles req/res and HTTP status codes
-├── services/tasks.service.js         # business logic and validation (unchanged since A1)
-├── repositories/tasks.repository.js  # Postgres queries — the only module that changed
-├── openapi.json                      # OpenAPI spec consumed by Swagger UI
-├── Dockerfile                        # builds the app image
-├── compose.yaml                      # api + db services, started together
-├── .env.example                      # committed placeholder env values
-└── .env                              # real secrets — git-ignored, never committed
+auth-api/
+├── index.js                       # loads .env, starts the server
+├── app.js                         # express app setup, route mounting
+├── supabaseClient.js              # initializes the Supabase client
+├── middleware/auth.middleware.js  # reusable bearer-token guard (requireAuth)
+├── routes/auth.routes.js          # /auth/signup, /auth/login, /auth/logout
+├── routes/info.routes.js          # /public/info, /protected/profile, /protected/dashboard
+├── controllers/auth.controller.js # signup/login/logout logic
+├── controllers/info.controller.js # public/protected route handlers
+├── openapi.json                   # OpenAPI spec with bearer security scheme
+├── .env.example                   # committed placeholder env values
+└── .env                           # real secrets — git-ignored, never committed
 ```
 
 ## Endpoints
 
-| Method | Path         | Description                          | Success | Errors                          |
-|--------|--------------|----------------------------------------|---------|----------------------------------|
-| GET    | `/`          | API info                              | 200     | –                                |
-| GET    | `/health`    | Health check (pings the database)     | 200     | –                                |
-| GET    | `/tasks`     | List all tasks                        | 200     | –                                |
-| GET    | `/tasks/:id` | Get a single task                     | 200     | 404 if not found                 |
-| POST   | `/tasks`     | Create a task (`{ "title": "..." }`)  | 201     | 400 if title is missing/empty    |
-| PUT    | `/tasks/:id` | Update a task's title and/or done     | 200     | 400 invalid body, 404 not found  |
-| DELETE | `/tasks/:id` | Delete a task                         | 204     | 404 if not found                 |
+| Method | Path                    | Auth required | Description                          | Success | Errors |
+|--------|-------------------------|:---:|----------------------------------------|---------|--------|
+| POST   | `/auth/signup`          | No  | Create a new user account (`{email, password}`) | 201 | 400 missing fields |
+| POST   | `/auth/login`           | No  | Log in, returns `access_token` + `refresh_token` | 200 | 400 missing fields, 401 invalid credentials |
+| POST   | `/auth/logout`          | **Yes** | End the session | 204 | 401 missing/invalid token |
+| GET    | `/public/info`          | No  | Open, unprotected data | 200 | – |
+| GET    | `/protected/profile`    | **Yes** | Returns the logged-in user's id/email/created_at | 200 | 401 missing/invalid/expired token |
+| GET    | `/protected/dashboard`  | **Yes** | Second protected route — proves the middleware is reusable | 200 | 401 missing/invalid/expired token |
 
-## Sample request/response
+## Sample requests
 
 ```bash
-curl -i http://localhost:3000/tasks
+# Sign up
+curl -i -X POST http://localhost:3000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+```
+```
+HTTP/1.1 201 Created
+{"user": {"id": "...", "email": "test@example.com", ...}}
 ```
 
+```bash
+# Log in
+curl -i -X POST http://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+```
 ```
 HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-
-[{"id":1,"title":"Buy milk","done":false},{"id":2,"title":"Walk dog","done":false},{"id":3,"title":"Write code","done":true},{"id":4,"title":"docker task","done":false}]
+{"access_token": "eyJhbGci...", "refresh_token": "...", "user": {...}}
 ```
-
-## Persistence proof
-
-Tested by:
-1. Running `docker compose up`, then creating a task (`"docker task"`, id 4) via a POST request.
-2. Running `docker compose down` — this stops and removes both containers.
-3. Running `docker compose up` again — a fresh `db` container starts, but attaches to the same named volume (`taskdata`).
-4. Confirmed via `GET /tasks` and directly in the database — task id 4 was still present after the full teardown and restart.
-
-Database contents, queried directly inside the container:
 
 ```bash
-docker exec -it crud-api-db-1 psql -U postgres -d tasks -c "SELECT * FROM tasks;"
+# Access a protected route
+curl -i http://localhost:3000/protected/profile \
+  -H "Authorization: Bearer eyJhbGci..."
+```
+```
+HTTP/1.1 200 OK
+{"id": "...", "email": "test@example.com", "created_at": "..."}
 ```
 
+```bash
+# Tampered token
+curl -i http://localhost:3000/protected/profile \
+  -H "Authorization: Bearer eyJhbGci...tampered"
 ```
- id |    title    | done
-----+--------------+------
-  1 | Buy milk     | f
-  2 | Walk dog     | f
-  3 | Write code   | t
-  4 | docker task  | f
-(4 rows)
 ```
-
-![Database contents showing 4 tasks including "docker task", proving data survived a full docker compose down/up cycle](./docs/db-screenshot.png)
-
-This confirms the named volume (`taskdata` in `compose.yaml`) is what keeps Postgres's data files on disk — without it, `docker compose down` would delete the container and all its data with it.
-
-## Database schema
-
-```sql
-CREATE TABLE IF NOT EXISTS tasks (
-  id serial PRIMARY KEY,
-  title text NOT NULL,
-  done boolean NOT NULL DEFAULT false
-);
+HTTP/1.1 401 Unauthorized
+{"error": "Invalid or expired token"}
 ```
 
-Seeded only if the table is empty on startup — restarting never duplicates the seed rows (verified across multiple `docker compose down`/`up` cycles).
+## Swagger UI
 
-## Architecture
+Open `http://localhost:3000/docs`. Protected routes show a lock icon. Click **Authorize**, paste an `access_token` from `/auth/login`, and use **Try it out** on `/protected/profile` directly from the browser.
 
-- **Routes** — map a path + method to a controller function. Unchanged since A1.
-- **Controllers** — handle HTTP concerns (status codes, req/res). Now `async` because the database driver is Promise-based.
-- **Services** — hold business rules (e.g. "title can't be empty"). No knowledge of Express or Postgres.
-- **Repositories** — the only layer that talks to the database. This is the module that changed at every storage swap (array → SQLite → Postgres) while everything above it stayed the same.
+*(Swagger screenshot goes here.)*
+
+## Middleware — how the guard works
+
+`middleware/auth.middleware.js` exports `requireAuth`, applied to every protected route:
+
+1. Reads the `Authorization` header, requires the exact `Bearer <token>` shape — a missing or malformed header returns `401 { "error": "Access token required" }` without ever calling Supabase.
+2. If a token is present, calls `supabase.auth.getUser(token)` — a real network call to Supabase, so the result is trustworthy (not just decoding the JWT locally).
+3. Invalid/expired/tampered token → `401 { "error": "Invalid or expired token" }`.
+4. Valid token → attaches `req.user` and calls `next()`. The route handler never re-checks auth — it just reads `req.user`.
+
+`/protected/profile` and `/protected/dashboard` both use this same middleware with zero duplicated auth code — proving the guard is reusable.
+
+## Why logout can't force-invalidate a JWT here
+
+`POST /auth/logout` calls Supabase's `signOut()`, but with only the `anon` key (no `service_role` key — which the assignment explicitly says never to use client-side), a stateless backend cannot server-side revoke one specific user's already-issued JWT. If you take a valid token and keep calling `/protected/profile` with it after "logging out," it will keep working until the token's natural expiry (Supabase default: 1 hour). This is a real, well-known limitation of stateless JWTs, not a bug in this implementation — it's the same reason refresh tokens and short access-token lifetimes exist.
