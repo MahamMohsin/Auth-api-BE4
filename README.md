@@ -42,23 +42,6 @@ npm start
 Server runs at `http://localhost:3000`.
 Swagger docs (with Bearer auth "Authorize" button): `http://localhost:3000/docs`
 
-## Project structure
-
-```
-auth-api/
-├── index.js                       # loads .env, starts the server
-├── app.js                         # express app setup, route mounting
-├── supabaseClient.js              # initializes the Supabase client
-├── middleware/auth.middleware.js  # reusable bearer-token guard (requireAuth)
-├── routes/auth.routes.js          # /auth/signup, /auth/login, /auth/logout
-├── routes/info.routes.js          # /public/info, /protected/profile, /protected/dashboard
-├── controllers/auth.controller.js # signup/login/logout logic
-├── controllers/info.controller.js # public/protected route handlers
-├── openapi.json                   # OpenAPI spec with bearer security scheme
-├── .env.example                   # committed placeholder env values
-└── .env                           # real secrets — git-ignored, never committed
-```
-
 ## Endpoints
 
 | Method | Path                    | Auth required | Description                          | Success | Errors |
